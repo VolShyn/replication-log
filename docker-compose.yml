@@ -1,0 +1,37 @@
+version: "3.9"
+services:
+  master:
+    build: .
+    container_name: master
+    environment:
+      ROLE: master
+      PORT: 8000
+      SECONDARIES: '["http://secondary1:8000","http://secondary2:8000"]'
+      REPL_TIMEOUT_SECS: 5
+      REPL_RETRIES: 3
+    ports:
+      - "8000:8000"
+    depends_on:
+      - secondary1
+      - secondary2
+
+  secondary1:
+    build: .
+    container_name: secondary1
+    environment:
+      ROLE: secondary
+      PORT: 8000
+      REPL_DELAY_SECS: 0
+    # `ports` not required for inter-container calls, but fine if you want host access:
+    ports:
+      - "8001:8000"
+
+  secondary2:
+    build: .
+    container_name: secondary2
+    environment:
+      ROLE: secondary
+      PORT: 8000
+      REPL_DELAY_SECS: 2
+    ports:
+      - "8002:8000"
