@@ -21,7 +21,7 @@ services:
     environment:
       ROLE: secondary
       PORT: 8000
-      REPL_DELAY_SECS: 0
+      REPL_DELAY_SECS: 8 # delay should be different for the servers (<10)
     # `ports` not required for inter-container calls, but fine if you want host access:
     ports:
       - "8001:8000"
@@ -32,6 +32,6 @@ services:
     environment:
       ROLE: secondary
       PORT: 8000
-      REPL_DELAY_SECS: 2
+      REPL_DELAY_SECS: 5
     ports:
       - "8002:8000"

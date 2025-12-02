@@ -1,7 +1,9 @@
 import asyncio
-from typing import Dict, List
 from datetime import datetime
-from models import Message
+from typing import Dict, List
+
+from pydantic_models import Message
+
 
 class LogStore:
     def __init__(self) -> None:
