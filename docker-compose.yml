@@ -1,4 +1,3 @@
-version: "3.9"
 services:
   master:
     build: .
@@ -7,8 +6,8 @@ services:
       ROLE: master
       PORT: 8000
       SECONDARIES: '["http://secondary1:8000","http://secondary2:8000"]'
-      REPL_TIMEOUT_SECS: 5
-      REPL_RETRIES: 3
+      REPL_TIMEOUT_SECS: 30 # changed for longer, must be bigger than DELAY
+      REPL_RETRIES: 2
     ports:
       - "8000:8000"
     depends_on:
@@ -21,7 +20,7 @@ services:
     environment:
       ROLE: secondary
       PORT: 8000
-      REPL_DELAY_SECS: 8 # delay should be different for the servers (<10)
+      REPL_DELAY_SECS: 5 # delay should be different for the servers (<10)
     # `ports` not required for inter-container calls, but fine if you want host access:
     ports:
       - "8001:8000"
@@ -32,6 +31,6 @@ services:
     environment:
       ROLE: secondary
       PORT: 8000
-      REPL_DELAY_SECS: 5
+      REPL_DELAY_SECS: 8
     ports:
       - "8002:8000"
