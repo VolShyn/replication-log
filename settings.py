@@ -11,7 +11,7 @@ class Settings(BaseSettings):
         default_factory=list, env="SECONDARIES"
     )  # supports JSON
 
-    repl_delay_secs: float = Field(default=5.0, env="REPL_DELAY_SECS")
+    repl_delay_secs: float = Field(default=10.0, env="REPL_DELAY_SECS")
     repl_timeout_secs: float = Field(
         default=30.0, env="REPL_TIMEOUT_SECS"
     )  # changed to 30 secs as suggested
