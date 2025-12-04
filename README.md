@@ -1,9 +1,3 @@
-# Replicated log
-
-Data is stored and appended in an ordered set of records called ‘log‘. Data is replicated from the "Master" to the "Secondaries";
-
-We would use Pydantic to validate the data;
-
 # How to start
 
 If you have troubles with `uvicorn`, it's probably because It works only on unix systems;
@@ -16,9 +10,9 @@ curl http://localhost:8000/messages
 curl http://localhost:8001/messages
 curl http://localhost:8002/messages
 ```
-3. go to the `127.0.0.1:8000/docs` to open "swagger" for master, and `127.0.0.1:8001/docs` for one of the secondaries.
+3. go to the `127.0.0.1:8000/docs` to open "swagger" for the master, and `127.0.0.1:800x/docs` for the secondaries.
 
-As for me, swagger is more fun;
+As for me, swagger is more fun! =)
 
 
 # Self note
@@ -27,4 +21,4 @@ As for me, swagger is more fun;
 
 - Excerpt from `Distributed systems for fun and profit`, Mikito Takada
 
-**Write concern** (w) - number of ACK needed before considering a write operation successful and responding to the client. W = 1 - master needs ACK only from itself. It's all about `latency / durability` trade-off. From here **Semi-synchronicity** - is when we dont wait for all the secondaries.
+**Write concern** (w) - number of ACK needed before considering a write operation successful and responding to the client. W = 1 - master needs ACK only from itself. It's all about `latency / durability` trade-off. From here **Semi-synchronicity** - is when we dont wait for all the secondaries to send ACK.

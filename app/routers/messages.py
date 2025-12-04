@@ -30,10 +30,16 @@ async def append_message(payload: MessageIn):
     Append a new message to the log (master only)
     Supports write concern for replication
     """
+    from app.services.health_tracker import health_tracker
     from main import store
 
     if settings.role != "master":
         raise HTTPException(status_code=405, detail="POST only allowed on master")
+
+    if not await health_tracker.has_quorum():
+        raise HTTPException(
+            status_code=503, detail="No quorum. Master is in read-only mode"
+        )
 
     write_concern = payload.w
     num_secondaries = len(settings.secondaries)
@@ -87,6 +93,9 @@ async def append_message(payload: MessageIn):
 
     # wait for either: required ACKs received OR all tasks finished
     await asyncio.wait([done_waiting, all_done], return_when=asyncio.FIRST_COMPLETED)
+    # this one actually is unbelievably cool, because if some secondary is down,
+    # we are going to the infinite retry loop, YET, the parallel clients aren't blocked
+    # each Message should have own set of tasks and events
 
     # check if we got enough ACKs
     if ack_count["value"] >= required_acks:

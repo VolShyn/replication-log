@@ -17,6 +17,16 @@ class Settings(BaseSettings):
     )  # changed to 30 secs as suggested
     repl_retries: int = Field(default=2, env="REPL_RETRIES")
 
+    # heartbeat conf
+    heartbeat_interval_secs: float = Field(default=5.0, env="HEARTBEAT_INTERVAL_SECS")
+    heartbeat_timeout_secs: float = Field(default=2.0, env="HEARTBEAT_TIMEOUT_SECS")
+    suspect_threshold: int = Field(
+        default=2, env="SUSPECT_THRESHOLD"
+    )  # missed heartbeats before suspected
+    unhealthy_threshold: int = Field(
+        default=4, env="UNHEALTHY_THRESHOLD"
+    )  # missed heartbeats before unhealthy
+
     # pylance fights here, just ignore
     class Config:  # type: ignore
         env_file = ".env"
