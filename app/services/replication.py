@@ -63,31 +63,3 @@ async def replicate_one(
                 log.warning(f"Retry {attempt} to {url}: {e}")
                 await asyncio.sleep(backoff)
     return False
-
-
-async def replicate_on_background(msg: Message) -> None:
-    """Fire-and-forget replication for w=1 scenarios (eventual consistency)"""
-    for url in settings.secondaries:
-        target = str(url).rstrip("/") + "/replicate"
-        attempt = 0
-        timeout = httpx.Timeout(settings.repl_timeout_secs)
-
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            while attempt <= settings.repl_retries:
-                attempt += 1
-                try:
-                    data = jsonable_encoder(msg)
-                    r = await client.post(target, json=data)
-                    r.raise_for_status()
-                    log.info(
-                        f"Background replication to {url} succeeded for id={msg.id}"
-                    )
-                    break
-                except Exception as e:
-                    if attempt > settings.repl_retries:
-                        log.error(
-                            f"Background replication to {url} failed for id={msg.id}: {e}"
-                        )
-                        break
-                    backoff = min(0.25 * attempt, 1.0)
-                    await asyncio.sleep(backoff)

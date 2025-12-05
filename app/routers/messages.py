@@ -5,7 +5,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException
 
 from app.pydantic_models import Message, MessageIn
-from app.services.replication import replicate_on_background, replicate_one
+from app.services.replication import replicate_one
 from settings import settings
 
 router = APIRouter()
@@ -58,18 +58,26 @@ async def append_message(payload: MessageIn):
         f"Committed locally id={msg.id} content_length={len(msg.content)} ts={msg.ts.isoformat()}"
     )
 
-    # 3) write concern = 1 is an eventual consistency example
-    if write_concern == 1:
-        log.info(f"w=1: returning after master commit for id={msg.id}")
-        # still replicate to secondaries in background
-        if settings.secondaries:
-            # start background task
-            asyncio.create_task(replicate_on_background(msg))
-        return msg
-
-    # 4) for w > 1, we need (w - 1) secondary ACKs before responding
+    # 3) replication logic for all write concerns
+    # required_acks = 0 (eventual consistency)
+    # required_acks = w-1 (wait for synchronous replication)
     required_acks = write_concern - 1
 
+    # early return (fire n forger)
+    if required_acks == 0:
+        log.info(f"w=1: returning after master commit for id={msg.id}")
+        # replicate to secondaries
+        if settings.secondaries:
+            ack_event = asyncio.Event()
+            ack_count = {"value": 0}
+            # start tasks but don't await
+            for u in settings.secondaries:
+                asyncio.create_task(
+                    replicate_one(str(u), msg, ack_count, required_acks, ack_event)
+                )
+        return msg
+
+    # 4) For w > 1, we need (w - 1) secondary ACKs before responding
     ack_event = asyncio.Event()  # each replica task increments a counter when succeeds
     ack_count = {"value": 0}
 
