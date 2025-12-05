@@ -56,7 +56,7 @@ async def run_test():
         # simulating the start M + s1 (pause s2 first to ensure only 2 nodes)
         log.info("Starting master and secondary1...")
         subprocess.run(
-            ["docker", "compose", "up", "-d"],
+            ["docker", "compose", "up", "-d", "--build", "master", "secondary2"],
             check=True,
             capture_output=True,
         )
@@ -114,7 +114,7 @@ async def run_test():
 
         if not await wait_for_service("http://localhost:8002"):
             raise RuntimeError("s2 failed to become ready")
-        await asyncio.sleep(5)
+        await asyncio.sleep(10)
 
         # check messages on S2
         log.info("checkign messages on s2")
