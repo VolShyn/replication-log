@@ -19,6 +19,15 @@ class Message(BaseModel):
     ts: datetime
 
 
+class MessageOut(BaseModel):
+    """
+    response model for POST /messages, excludes internal timestamp
+    """
+
+    id: int = Field(ge=1)
+    content: str
+
+
 class Ack(BaseModel):
     """
     Acknowledgement

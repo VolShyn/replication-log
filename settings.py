@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     repl_timeout_secs: float = Field(
         default=30.0, env="REPL_TIMEOUT_SECS"
     )  # changed to 30 secs as suggested
-    repl_retries: int = Field(default=2, env="REPL_RETRIES")
+    repl_retries: int = Field(default=4, env="REPL_RETRIES")
 
     # pylance fights here, just ignore
     class Config:  # type: ignore
