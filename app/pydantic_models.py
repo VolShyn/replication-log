@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -17,6 +18,15 @@ class Message(BaseModel):
     id: int = Field(ge=1)
     content: str
     ts: datetime
+
+
+class MessageOut(BaseModel):
+    """
+    response model for POST /messages, excludes internal timestamp
+    """
+
+    id: int = Field(ge=1)
+    content: str
 
 
 class Ack(BaseModel):
@@ -39,3 +49,18 @@ class ReplicatePayload(BaseModel):
     id: int = Field(ge=1)
     content: str
     ts: datetime
+
+
+class SecondaryHealth(str, Enum):
+    HEALTHY = "healthy"
+    SUSPECTED = "suspected"
+    UNHEALTHY = "unhealthy"
+
+
+class HealthResponse(BaseModel):
+    ok: bool
+    role: str
+    message_count: int
+    pending_out_of_order: int
+    secondaries: Optional[dict] = None
+    has_quorum: Optional[bool] = None

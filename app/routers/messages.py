@@ -4,15 +4,15 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
 
-from app.pydantic_models import Message, MessageIn
-from app.services.replication import replicate_on_background, replicate_one
+from app.pydantic_models import Message, MessageIn, MessageOut
+from app.services.replication import replicate_one
 from settings import settings
 
 router = APIRouter()
 log = logging.getLogger(settings.role.upper())
 
 
-@router.get("/messages", response_model=list[Message])
+@router.get("/messages", response_model=list[MessageOut])
 async def get_messages():
     """
     GET messages is available at any role!
@@ -24,16 +24,22 @@ async def get_messages():
     return await store.list_all()
 
 
-@router.post("/messages", response_model=Message)
+@router.post("/messages", response_model=MessageOut)
 async def append_message(payload: MessageIn):
     """
     Append a new message to the log (master only)
     Supports write concern for replication
     """
+    from app.services.health_tracker import health_tracker
     from main import store
 
     if settings.role != "master":
         raise HTTPException(status_code=405, detail="POST only allowed on master")
+
+    if not await health_tracker.has_quorum():
+        raise HTTPException(
+            status_code=503, detail="No quorum. Master is in read-only mode"
+        )
 
     write_concern = payload.w
     num_secondaries = len(settings.secondaries)
@@ -58,48 +64,35 @@ async def append_message(payload: MessageIn):
         f"Committed locally id={msg.id} content_length={len(msg.content)} ts={msg.ts.isoformat()}"
     )
 
-    # 3) write concern = 1 is an eventual consistency example
-    if write_concern == 1:
-        log.info(f"w=1: returning after master commit for id={msg.id}")
-        # still replicate to secondaries in background
-        if settings.secondaries:
-            # start background task
-            asyncio.create_task(replicate_on_background(msg))
-        return msg
-
-    # 4) for w > 1, we need (w - 1) secondary ACKs before responding
+    # 3) replication logic
+    # required_acks = w - 1
     required_acks = write_concern - 1
 
-    ack_event = asyncio.Event()  # each replica task increments a counter when succeeds
-    ack_count = {"value": 0}
-
-    # start all replication tasks concurrently
-    tasks = [
-        asyncio.create_task(
-            replicate_one(str(u), msg, ack_count, required_acks, ack_event)
-        )
-        for u in settings.secondaries
-    ]
-
-    # wait until we have enough ACKs or all tasks complete
-    done_waiting = asyncio.create_task(ack_event.wait())
-    all_done = asyncio.gather(*tasks, return_exceptions=True)
-
-    # wait for either: required ACKs received OR all tasks finished
-    await asyncio.wait([done_waiting, all_done], return_when=asyncio.FIRST_COMPLETED)
-
-    # check if we got enough ACKs
-    if ack_count["value"] >= required_acks:
-        log.info(
-            f"Write concern w={write_concern} satisfied: {ack_count['value']} secondary ACKs for id={msg.id}"
-        )
+    # w=1: return immediately after master commit (fire-and-forget replication)
+    if required_acks == 0:
+        for url in settings.secondaries:
+            asyncio.create_task(replicate_one(str(url), msg))
+        log.info(f"w=1 satisfied: master commit for id={msg.id}")
         return msg
 
-    # not enough ACKs - this is a failure for the requested write concern
+    # w>1: wait for required secondary ACKs
+    tasks = [
+        asyncio.create_task(replicate_one(str(url), msg))
+        for url in settings.secondaries
+    ]
+
+    acks = 0
+    for coro in asyncio.as_completed(tasks):
+        if await coro:
+            acks += 1
+            if acks >= required_acks:
+                log.info(f"w={write_concern} satisfied: {acks} ACKs for id={msg.id}")
+                return msg
+
     log.error(
-        f"Failed to satisfy w={write_concern}: only got {ack_count['value']} secondary ACKs for id={msg.id}"
+        f"w={write_concern} failed: got {acks}/{required_acks} ACKs for id={msg.id}"
     )
     raise HTTPException(
         status_code=502,
-        detail=f"Replication failed: required {required_acks} secondary ACKs, got {ack_count['value']}",
+        detail=f"Replication failed: got {acks}/{required_acks} secondary ACKs",
     )
