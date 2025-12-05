@@ -10,17 +10,13 @@ from settings import settings
 log = logging.getLogger(settings.role.upper())
 
 
-async def replicate_one(
-    url: str,
-    msg: Message,
-    ack_count: dict,
-    required_acks: int,
-    ack_event: asyncio.Event,
-) -> bool:
+async def replicate_one(url: str, msg: Message) -> bool:
+    """
+    Replicate a message to a single secondary with retries.
+    Returns True if replication succeeded, False otherwise.
+    """
     target = url.rstrip("/") + "/replicate"
     attempt = 0
-
-    ack_lock = asyncio.Lock()
 
     # to test blocking without errors, set REPL_DELAY_SECS < REPL_TIMEOUT_SECS
     timeout = httpx.Timeout(settings.repl_timeout_secs, connect=5.0)
@@ -35,10 +31,6 @@ async def replicate_one(
                 ack = r.json()
                 if ack.get("status") == "ok":
                     log.info(f"ACK from {url} for id={msg.id} attempt={attempt}")
-                    async with ack_lock:
-                        ack_count["value"] += 1
-                        if ack_count["value"] >= required_acks:
-                            ack_event.set()
                     return True
                 else:
                     log.warning(f"Unexpected ACK format from {url}: {ack}")
@@ -47,7 +39,7 @@ async def replicate_one(
             # separate timeout exceptions from the other exceptions
             except httpx.TimeoutException as e:
                 log.warning(f"Timeout to {url} attempt {attempt}: {e}")
-                if attempt > settings.repl_retries:
+                if attempt >= settings.repl_retries:
                     log.error(
                         f"Replication to {url} failed after {attempt} attempts (timeout)"
                     )
@@ -56,7 +48,7 @@ async def replicate_one(
                 # don't sleep long on timeout, just retry
                 await asyncio.sleep(0.5)
             except Exception as e:
-                if attempt > settings.repl_retries:
+                if attempt >= settings.repl_retries:
                     log.error(f"Replication to {url} failed: {e}")
                     return False
                 backoff = min(0.25 * attempt, 1.0)
