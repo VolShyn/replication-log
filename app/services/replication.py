@@ -10,19 +10,19 @@ from settings import settings
 log = logging.getLogger(settings.role.upper())
 
 
-async def replicate_one(
-    url: str,
-    msg: Message,
-    ack_count: dict,
-    required_acks: int,
-    ack_event: asyncio.Event,
-) -> bool:
+async def replicate_one(url: str, msg: Message) -> bool:
+    """
+    Replicate a message to a single secondary with retries.
+    Returns True if replication succeeded, False otherwise.
+    """
     from app.services.health_tracker import health_tracker
     from app.services.replication_manager import replication_manager
 
     target = url.rstrip("/") + "/replicate"
     attempt = 0
-    ack_lock = asyncio.Lock()
+
+    # to test blocking without errors, set REPL_DELAY_SECS < REPL_TIMEOUT_SECS
+    timeout = httpx.Timeout(settings.repl_timeout_secs, connect=5.0)
 
     while True:  # infinite retries for w > 1
         attempt += 1
@@ -43,8 +43,6 @@ async def replicate_one(
             )
             await asyncio.sleep(delay)
 
-        # to test blocking without errors, set REPL_DELAY_SECS < REPL_TIMEOUT_SECS
-        timeout = httpx.Timeout(settings.repl_timeout_secs, connect=5.0)
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 data = jsonable_encoder(msg)
@@ -56,11 +54,6 @@ async def replicate_one(
                     log.info(f"ACK from {url} for id={msg.id} attempt={attempt}")
                     await health_tracker.mark_successful_replication(url)
                     await replication_manager.mark_delivered(url, msg.id)
-
-                    async with ack_lock:
-                        ack_count["value"] += 1
-                        if ack_count["value"] >= required_acks:
-                            ack_event.set()
                     return True
                 else:
                     log.warning(f"Unexpected ACK format from {url}: {ack}")
@@ -72,33 +65,3 @@ async def replicate_one(
             log.warning(f"Connection failed to {url} attempt {attempt}: {e}")
         except Exception as e:
             log.warning(f"Replication error to {url} attempt {attempt}: {e}")
-
-
-# I wont change the background one, because, this can have limited retries, since it is only for eventual consistency,
-# so we do not guarantee delivery during the request
-async def replicate_on_background(msg: Message) -> None:
-    """Fire-and-forget replication for w=1 scenarios (eventual consistency)"""
-    for url in settings.secondaries:
-        target = str(url).rstrip("/") + "/replicate"
-        attempt = 0
-        timeout = httpx.Timeout(settings.repl_timeout_secs)
-
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            while attempt <= settings.repl_retries:
-                attempt += 1
-                try:
-                    data = jsonable_encoder(msg)
-                    r = await client.post(target, json=data)
-                    r.raise_for_status()
-                    log.info(
-                        f"Background replication to {url} succeeded for id={msg.id}"
-                    )
-                    break
-                except Exception as e:
-                    if attempt > settings.repl_retries:
-                        log.error(
-                            f"Background replication to {url} failed for id={msg.id}: {e}"
-                        )
-                        break
-                    backoff = min(0.25 * attempt, 1.0)
-                    await asyncio.sleep(backoff)
