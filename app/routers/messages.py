@@ -62,19 +62,18 @@ async def append_message(payload: MessageIn):
     # required_acks = w - 1
     required_acks = write_concern - 1
 
-    # w=1: return immediately after master commit (fire-and-forget replication)
-    if required_acks == 0:
-        for url in settings.secondaries:
-            asyncio.create_task(replicate_one(str(url), msg))
-        log.info(f"w=1 satisfied: master commit for id={msg.id}")
-        return msg
-
-    # w>1: wait for required secondary ACKs
+    # start all replication tasks concurrently
     tasks = [
         asyncio.create_task(replicate_one(str(url), msg))
         for url in settings.secondaries
     ]
 
+    # w=1: return immediately after master commit (fire-and-forget replication)
+    if required_acks == 0:
+        log.info(f"w=1 satisfied: master commit for id={msg.id}")
+        return msg
+
+    # w>1: wait for required secondary ACKs
     acks = 0
     for coro in asyncio.as_completed(tasks):
         if await coro:
